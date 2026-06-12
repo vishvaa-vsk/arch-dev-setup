@@ -6,6 +6,8 @@ readonly SCRIPT_NAME="${0##*/}"
 readonly AUR_BASE_URL="https://aur.archlinux.org"
 readonly POSTGRES_DATA_DIR="/var/lib/postgres/data"
 
+AUR_HELPER=""
+
 log() {
   printf '\n\033[1;34m[%s]\033[0m %s\n' "$SCRIPT_NAME" "$*"
 }
@@ -71,18 +73,51 @@ install_repo_packages() {
   sudo pacman -Syu --needed --noconfirm "${packages[@]}"
 }
 
-install_yay() {
+select_aur_helper() {
   if command -v yay >/dev/null; then
+    AUR_HELPER="yay"
+    log "Using the installed yay AUR helper"
+    return
+  fi
+
+  if command -v paru >/dev/null; then
+    AUR_HELPER="paru"
+    log "Using the installed paru AUR helper"
+    return
+  fi
+
+  printf '\nNo AUR helper was found. Select one to install:\n'
+  printf '  1) yay\n'
+  printf '  2) paru\n'
+
+  while [[ -z "$AUR_HELPER" ]]; do
+    read -r -p "Enter 1 or 2: " selection || die "Unable to read AUR helper selection."
+    case "$selection" in
+      1 | yay)
+        AUR_HELPER="yay"
+        ;;
+      2 | paru)
+        AUR_HELPER="paru"
+        ;;
+      *)
+        warn "Invalid selection. Enter 1 for yay or 2 for paru."
+        ;;
+    esac
+  done
+}
+
+install_aur_helper() {
+  if command -v "$AUR_HELPER" >/dev/null; then
     return
   fi
 
   local build_dir
   build_dir="$(mktemp -d)"
 
-  log "Installing the yay AUR helper"
-  git clone "${AUR_BASE_URL}/yay-bin.git" "$build_dir/yay-bin"
+  log "Building and installing the ${AUR_HELPER} AUR helper"
+  git clone "${AUR_BASE_URL}/${AUR_HELPER}.git" "$build_dir/$AUR_HELPER"
   (
-    cd "$build_dir/yay-bin"
+    cd "$build_dir/$AUR_HELPER"
     makepkg -si --needed --noconfirm
   )
   rm -rf "$build_dir"
@@ -117,8 +152,8 @@ install_aur_packages() {
     localsend-bin
   )
 
-  log "Installing packages available through yay"
-  yay -S --needed --noconfirm "${packages[@]}"
+  log "Installing packages available through ${AUR_HELPER}"
+  "$AUR_HELPER" -S --needed --noconfirm "${packages[@]}"
 }
 
 configure_docker() {
@@ -182,9 +217,10 @@ EOF
 }
 
 main() {
+  select_aur_helper
   sudo -v
   install_repo_packages
-  install_yay
+  install_aur_helper
   remove_valkey
   install_aur_git_package antigravity
   install_aur_git_package redis

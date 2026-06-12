@@ -14,7 +14,9 @@ cd ~/arch-dev-setup
 
 The script performs a full system upgrade, installs repository and AUR packages,
 enables Docker, PostgreSQL, and Redis, initializes PostgreSQL when necessary,
-and installs the latest Node.js release through NVM.
+and installs the latest Node.js release through NVM. If neither `yay` nor `paru`
+is installed, the script asks which one to use, then clones its AUR repository,
+builds it with `makepkg`, and installs it before processing other AUR packages.
 
 ## Package Sources
 
@@ -41,6 +43,8 @@ repository instead of being built from AUR.
 
 - Run this only on Arch Linux or an Arch-based distribution.
 - Do not run it as root. It uses `sudo` where required.
+- An installed `yay` or `paru` is reused automatically. When neither is
+  installed, select one when prompted.
 - The script uses actual Redis, not Valkey. Redis supplies both `redis-server`
   and `redis-cli`. If Valkey is installed, the script removes it before
   installing Redis.
