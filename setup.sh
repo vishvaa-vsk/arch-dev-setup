@@ -184,6 +184,8 @@ configure_redis() {
 configure_nvm_and_node() {
   local nvm_init="/usr/share/nvm/init-nvm.sh"
   local init_line='[ -s /usr/share/nvm/init-nvm.sh ] && source /usr/share/nvm/init-nvm.sh'
+  local fish_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d"
+  local fish_nvm_config="$fish_config_dir/nvm.fish"
   [[ -r "$nvm_init" ]] || die "NVM initialization script was not found at ${nvm_init}."
 
   for shell_config in "$HOME/.bashrc" "$HOME/.zshrc"; do
@@ -195,6 +197,20 @@ configure_nvm_and_node() {
 
   log "Installing the latest Node.js release through NVM"
   bash -c "source '$nvm_init'; nvm install node; nvm alias default node"
+
+  log "Configuring Fish to use NVM's default Node.js version"
+  mkdir -p "$fish_config_dir"
+  printf '%s\n' \
+    '# Resolve the default Node.js version installed by NVM.' \
+    'if test -r /usr/share/nvm/init-nvm.sh' \
+    "    set -l nvm_node (bash -c 'source /usr/share/nvm/init-nvm.sh >/dev/null 2>&1; nvm which default' 2>/dev/null)" \
+    '    if test -x "$nvm_node"' \
+    '        set -l nvm_bin (dirname "$nvm_node")' \
+    '        if not contains -- "$nvm_bin" $PATH' \
+    '            set -gx PATH "$nvm_bin" $PATH' \
+    '        end' \
+    '    end' \
+    'end' >"$fish_nvm_config"
 }
 
 print_summary() {
@@ -208,7 +224,7 @@ Installed:
   - Redis and redis-cli
   - PostgreSQL and pgAdmin 4 Desktop
   - GitHub CLI and Microsoft Edit
-  - Python, uv, Node.js through NVM, pnpm, and Bun
+  - Python, uv, Node.js through NVM, pnpm, and Bun, with Node.js available in Fish
   - Brave Browser and LocalSend
 
 Log out and back in before using Docker without sudo.

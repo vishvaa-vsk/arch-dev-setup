@@ -14,8 +14,9 @@ cd ~/arch-dev-setup
 
 The script performs a full system upgrade, installs repository and AUR packages,
 enables Docker, PostgreSQL, and Redis, initializes PostgreSQL when necessary,
-and installs the latest Node.js release through NVM. If neither `yay` nor `paru`
-is installed, the script asks which one to use, then clones its AUR repository,
+and installs the latest Node.js release through NVM. Node.js is added to Fish's
+PATH through `~/.config/fish/conf.d/nvm.fish`. If neither `yay` nor `paru` is
+installed, the script asks which one to use, then clones its AUR repository,
 builds it with `makepkg`, and installs it before processing other AUR packages.
 
 ## Package Sources
@@ -50,6 +51,8 @@ repository instead of being built from AUR.
   installing Redis.
 - Log out and back in after installation so Docker group membership takes
   effect.
-- NVM is initialized in both `~/.bashrc` and `~/.zshrc`.
+- NVM is initialized in both `~/.bashrc` and `~/.zshrc`. Fish dynamically adds
+  NVM's default Node.js version to PATH through its `conf.d` directory. Use Bash
+  or Zsh for NVM management commands because upstream NVM does not support Fish.
 - Re-running the script upgrades the system and skips packages already
   installed.
