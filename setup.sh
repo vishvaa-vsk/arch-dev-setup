@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 readonly SCRIPT_NAME="${0##*/}"
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly AUR_BASE_URL="https://aur.archlinux.org"
 readonly POSTGRES_DATA_DIR="/var/lib/postgres/data"
 
@@ -213,19 +214,154 @@ configure_nvm_and_node() {
     'end' >"$fish_nvm_config"
 }
 
+deploy_dotfiles() {
+  log "Deploying dotfiles and user configurations"
+
+  local src_dir="${SCRIPT_DIR}/dotfiles"
+  [[ -d "$src_dir" ]] || die "dotfiles directory not found at ${src_dir}."
+
+  # Create necessary home subdirectories
+  mkdir -p "$HOME/.config"
+  mkdir -p "$HOME/Pictures/Wallpapers"
+
+  # Copy home level files
+  for file in "$src_dir"/.bashrc "$src_dir"/.bash_profile "$src_dir"/.profile "$src_dir"/.gitconfig "$src_dir"/.zshrc "$src_dir"/.zshenv "$src_dir"/.face "$src_dir"/.face.icon "$src_dir"/autologin.conf; do
+    if [[ -f "$file" ]]; then
+      cp -f "$file" "$HOME/$(basename "$file")"
+    fi
+  done
+
+  # Copy Pictures files
+  if [[ -f "$src_dir/Pictures/memoji.png" ]]; then
+    cp -f "$src_dir/Pictures/memoji.png" "$HOME/Pictures/memoji.png"
+  fi
+  if [[ -f "$src_dir/Pictures/Wallpapers/marvels-spider-man-miles-morales-playstation-4-playstation-5-3840x2160-4090.jpg" ]]; then
+    cp -f "$src_dir/Pictures/Wallpapers/marvels-spider-man-miles-morales-playstation-4-playstation-5-3840x2160-4090.jpg" \
+          "$HOME/Pictures/Wallpapers/marvels-spider-man-miles-morales-playstation-4-playstation-5-3840x2160-4090.jpg"
+  fi
+
+  # Copy all .config subfolders
+  for config_item in "$src_dir"/.config/*; do
+    if [[ -d "$config_item" ]]; then
+      local folder_name
+      folder_name="$(basename "$config_item")"
+      log "Deploying config folder: $folder_name"
+      mkdir -p "$HOME/.config/$folder_name"
+      
+      if [[ "$folder_name" == "Code" ]]; then
+        mkdir -p "$HOME/.config/Code/User"
+        if [[ -f "$config_item/User/settings.json" ]]; then
+          cp -f "$config_item/User/settings.json" "$HOME/.config/Code/User/settings.json"
+        fi
+        if [[ -f "$config_item/User/keybindings.json" ]]; then
+          cp -f "$config_item/User/keybindings.json" "$HOME/.config/Code/User/keybindings.json"
+        fi
+      elif [[ "$folder_name" == "Antigravity IDE" ]]; then
+        mkdir -p "$HOME/.config/Antigravity IDE/User"
+        if [[ -f "$config_item/User/settings.json" ]]; then
+          cp -f "$config_item/User/settings.json" "$HOME/.config/Antigravity IDE/User/settings.json"
+        fi
+      elif [[ "$folder_name" == "Antigravity" ]]; then
+        mkdir -p "$HOME/.config/Antigravity"
+        if [[ -f "$config_item/app_storage.json" ]]; then
+          cp -f "$config_item/app_storage.json" "$HOME/.config/Antigravity/app_storage.json"
+        fi
+      else
+        rm -rf "$HOME/.config/$folder_name"
+        cp -rP "$config_item" "$HOME/.config/$folder_name"
+      fi
+    fi
+  done
+
+  # Recreate symlinks in ~/.config/hypr to point to the correct user home directory
+  rm -f "$HOME/.config/hypr/lock_avatar.png"
+  ln -sf "$HOME/Pictures/memoji.png" "$HOME/.config/hypr/lock_avatar.png"
+
+  rm -f "$HOME/.config/hypr/lock_wallpaper.png"
+  ln -sf "$HOME/Pictures/Wallpapers/marvels-spider-man-miles-morales-playstation-4-playstation-5-3840x2160-4090.jpg" "$HOME/.config/hypr/lock_wallpaper.png"
+
+  # Replace hardcoded home paths /home/vishvaa with current $HOME in the copied configs and shell scripts
+  log "Updating hardcoded path references to current user's home"
+  find "$HOME/.config" -type f -not -path '*/.*' -exec sed -i "s|/home/vishvaa|$HOME|g" {} + 2>/dev/null || true
+  if [[ -f "$HOME/.config/fish/fish_variables" ]]; then
+    sed -i "s|/home/vishvaa|$HOME|g" "$HOME/.config/fish/fish_variables"
+  fi
+  for file in "$HOME"/.bashrc "$HOME"/.bash_profile "$HOME"/.profile "$HOME"/.zshrc "$HOME"/.zshenv; do
+    if [[ -f "$file" ]]; then
+      sed -i "s|/home/vishvaa|$HOME|g" "$file"
+    fi
+  done
+}
+
+remove_display_managers() {
+  log "Checking for and removing conflicting display managers"
+  
+  local dms=(
+    sddm
+    greetd
+    gdm
+    lightdm
+    ly
+  )
+
+  for dm in "${dms[@]}"; do
+    if pacman -Q "$dm" >/dev/null 2>&1; then
+      log "Disabling service for conflicting display manager: $dm"
+      sudo systemctl disable "${dm}.service" || true
+      
+      log "Removing display manager package: $dm"
+      if ! sudo pacman -R --noconfirm "$dm" 2>/dev/null; then
+        warn "Package $dm has active dependencies. Removing with nodepeps (-Rdd)..."
+        sudo pacman -Rdd --noconfirm "$dm"
+      fi
+    fi
+  done
+}
+
+configure_hypr_login() {
+  log "Configuring hypr-login (TTY Autologin with Hyprland/hyprlock)"
+
+  log "Configuring getty autologin on tty1..."
+  sudo mkdir -p /etc/systemd/system/getty@tty1.service.d
+
+  # Create autologin.conf with the current username dynamically
+  sudo tee /etc/systemd/system/getty@tty1.service.d/autologin.conf >/dev/null <<EOF
+[Service]
+ExecStart=
+ExecStart=-/usr/bin/agetty -o "-p -f -- \u" --noclear --autologin $TARGET_USER %I \$TERM
+EOF
+
+  log "Reloading systemd daemon..."
+  sudo systemctl daemon-reload
+
+  log "Disabling display managers (SDDM, Greetd)..."
+  sudo systemctl disable sddm.service || true
+  sudo systemctl disable greetd.service || true
+
+  log "Setting user face permissions for hyprlock..."
+  sudo setfacl -m u:sddm:x "$HOME" 2>/dev/null || true
+  sudo setfacl -m u:sddm:r "$HOME/.face.icon" 2>/dev/null || true
+  sudo setfacl -m u:sddm:r "$HOME/.face" 2>/dev/null || true
+}
+
 print_summary() {
   cat <<EOF
 
 Setup complete.
 
 Installed:
-  - Visual Studio Code (Microsoft build) and Antigravity
+  - Visual Studio Code (Microsoft build) and Antigravity IDE
   - Docker Engine, Buildx, and Compose
   - Redis and redis-cli
   - PostgreSQL and pgAdmin 4 Desktop
   - GitHub CLI and Microsoft Edit
   - Python, uv, Node.js through NVM, pnpm, and Bun, with Node.js available in Fish
   - Brave Browser and LocalSend
+
+Configured:
+  - User configuration dotfiles deployed and path references adjusted
+  - Conflicting display managers removed (if present)
+  - hypr-login setup completed (TTY autologin active on tty1)
 
 Log out and back in before using Docker without sudo.
 Authenticate GitHub CLI with: gh auth login
@@ -238,13 +374,16 @@ main() {
   install_repo_packages
   install_aur_helper
   remove_valkey
-  install_aur_git_package antigravity
+  install_aur_git_package antigravity-ide
   install_aur_git_package redis
   install_aur_packages
   configure_docker
   configure_postgresql
   configure_redis
   configure_nvm_and_node
+  deploy_dotfiles
+  remove_display_managers
+  configure_hypr_login
   print_summary
 }
 
