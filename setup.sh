@@ -172,9 +172,17 @@ configure_docker() {
 
 configure_postgresql() {
   log "Initializing and enabling PostgreSQL"
-  if [[ ! -f "${POSTGRES_DATA_DIR}/PG_VERSION" ]]; then
+  
+  local needs_init=false
+  if [[ ! -d "$POSTGRES_DATA_DIR" ]] || [[ -z "$(sudo ls -A "$POSTGRES_DATA_DIR" 2>/dev/null)" ]]; then
+    needs_init=true
+  fi
+
+  if [[ "$needs_init" == "true" ]]; then
     sudo install -d -o postgres -g postgres -m 700 "$POSTGRES_DATA_DIR"
     sudo -u postgres initdb --locale=C.UTF-8 -E UTF8 -D "$POSTGRES_DATA_DIR"
+  else
+    log "PostgreSQL data directory is not empty. Skipping initialization."
   fi
   sudo systemctl enable --now postgresql.service
 }
