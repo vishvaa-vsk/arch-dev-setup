@@ -1,0 +1,15 @@
+{
+	"antigravity.marketplaceGalleryItemURL": "https://marketplace.visualstudio.com/items",
+	"antigravity.marketplaceExtensionGalleryServiceURL": "https://marketplace.visualstudio.com/_apis/public/gallery",
+	"workbench.colorTheme": "Catppuccin Dark Pro",
+	"workbench.productIconTheme": "fluent-icons",
+	"workbench.iconTheme": "material-icon-theme",
+	"python.languageServer": "Default",
+	"editor.fontSize": 16,
+	"files.autoSave": "afterDelay",
+	"editor.mouseWheelZoom": true,
+	"git.autofetch": true,
+	"explorer.confirmDragAndDrop": false,
+	"git.confirmSync": false,
+	"explorer.confirmDelete": false
+}

@@ -23,8 +23,8 @@ builds it with `makepkg`, and installs it before processing other AUR packages.
 
 Official repositories:
 
-- Docker Engine, Buildx, Compose, GitHub CLI, PostgreSQL, Python, NVM, pnpm,
-  Bun, uv, and Microsoft Edit (`msedit`)
+- Docker Engine, Buildx, Compose, Ghostty, GitHub CLI, hyprlock, PostgreSQL,
+  Python, NVM, pnpm, Bun, uv, and Microsoft Edit (`msedit`)
 
 AUR:
 
@@ -56,3 +56,6 @@ repository instead of being built from AUR.
   or Zsh for NVM management commands because upstream NVM does not support Fish.
 - Re-running the script upgrades the system and skips packages already
   installed.
+- The TTY autologin setup starts Niri on tty1/tty2 and configures Niri to launch
+  hyprlock as the login-style lock screen. Existing Niri config is backed up to
+  `~/.config/niri/config.kdl.before-hyprlogin` before the startup line is added.

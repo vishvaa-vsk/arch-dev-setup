@@ -60,7 +60,9 @@ install_repo_packages() {
     docker
     docker-buildx
     docker-compose
+    ghostty
     github-cli
+    hyprlock
     postgresql
     python
     nvm
@@ -148,7 +150,7 @@ remove_valkey() {
 install_aur_packages() {
   local packages=(
     visual-studio-code-bin
-    pgadmin4-desktop
+    pgadmin4-desktop-bin
     brave-bin
     localsend-bin
   )
@@ -266,6 +268,14 @@ deploy_dotfiles() {
         if [[ -f "$config_item/app_storage.json" ]]; then
           cp -f "$config_item/app_storage.json" "$HOME/.config/Antigravity/app_storage.json"
         fi
+      elif [[ "$folder_name" == "niri" ]]; then
+        mkdir -p "$HOME/.config/niri/scripts"
+        if [[ -d "$config_item/scripts" ]]; then
+          cp -f "$config_item"/scripts/* "$HOME/.config/niri/scripts/"
+        fi
+      elif [[ "$folder_name" == "hypr" || "$folder_name" == "hypr-login" ]]; then
+        # Skip copying hypr/hypr-login folders here; they are handled in configure_hypr_login
+        continue
       else
         rm -rf "$HOME/.config/$folder_name"
         cp -rP "$config_item" "$HOME/.config/$folder_name"
@@ -273,12 +283,9 @@ deploy_dotfiles() {
     fi
   done
 
-  # Recreate symlinks in ~/.config/hypr to point to the correct user home directory
-  rm -f "$HOME/.config/hypr/lock_avatar.png"
-  ln -sf "$HOME/Pictures/memoji.png" "$HOME/.config/hypr/lock_avatar.png"
-
-  rm -f "$HOME/.config/hypr/lock_wallpaper.png"
-  ln -sf "$HOME/Pictures/Wallpapers/marvels-spider-man-miles-morales-playstation-4-playstation-5-3840x2160-4090.jpg" "$HOME/.config/hypr/lock_wallpaper.png"
+  if [[ -d "$HOME/.config/niri/scripts" ]]; then
+    chmod +x "$HOME"/.config/niri/scripts/*
+  fi
 
   # Replace hardcoded home paths /home/vishvaa with current $HOME in the copied configs and shell scripts
   log "Updating hardcoded path references to current user's home"
@@ -291,6 +298,33 @@ deploy_dotfiles() {
       sed -i "s|/home/vishvaa|$HOME|g" "$file"
     fi
   done
+}
+
+configure_niri_hyprlock_startup() {
+  local niri_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/niri"
+  local niri_config="$niri_config_dir/config.kdl"
+  local backup_config="$niri_config.before-hyprlogin"
+  local tmp_config
+
+  log "Ensuring Niri starts the hyprlock login screen"
+  mkdir -p "$niri_config_dir"
+
+  if [[ ! -f "$niri_config" ]]; then
+    printf '%s\n' \
+      '// Created by arch-dev-setup for TTY autologin with hyprlock.' \
+      'spawn-at-startup "hyprlock"' >"$niri_config"
+    return
+  fi
+
+  if grep -Eq '(^|[[:space:]])spawn-at-startup[[:space:]]+"hyprlock"|hyprlock' "$niri_config"; then
+    return
+  fi
+
+  cp -n "$niri_config" "$backup_config"
+  tmp_config="$(mktemp)"
+  printf '%s\n\n' 'spawn-at-startup "hyprlock"' >"$tmp_config"
+  cat "$niri_config" >>"$tmp_config"
+  mv "$tmp_config" "$niri_config"
 }
 
 remove_display_managers() {
@@ -319,7 +353,30 @@ remove_display_managers() {
 }
 
 configure_hypr_login() {
-  log "Configuring hypr-login (TTY Autologin with Hyprland/hyprlock)"
+  log "Configuring hypr-login style TTY autologin for Niri with hyprlock"
+
+  log "Copying hyprlock configuration..."
+  local hypr_src_dir="${SCRIPT_DIR}/dotfiles/.config/hypr"
+  local hypr_dest_dir="$HOME/.config/hypr"
+  mkdir -p "$hypr_dest_dir"
+  if [[ -f "$hypr_src_dir/hyprlock.conf" ]]; then
+    cp -f "$hypr_src_dir/hyprlock.conf" "$hypr_dest_dir/hyprlock.conf"
+  fi
+
+  log "Creating lock screen avatar and wallpaper symlinks..."
+  rm -f "$hypr_dest_dir/lock_avatar.png"
+  ln -sf "$HOME/Pictures/memoji.png" "$hypr_dest_dir/lock_avatar.png"
+
+  rm -f "$hypr_dest_dir/lock_wallpaper.png"
+  ln -sf "$HOME/Pictures/Wallpapers/marvels-spider-man-miles-morales-playstation-4-playstation-5-3840x2160-4090.jpg" "$hypr_dest_dir/lock_wallpaper.png"
+
+  log "Copying hyprlogin configuration..."
+  local hypr_login_src_dir="${SCRIPT_DIR}/dotfiles/.config/hypr-login"
+  local hypr_login_dest_dir="$HOME/.config/hypr-login"
+  mkdir -p "$hypr_login_dest_dir"
+  if [[ -f "$hypr_login_src_dir/install.conf" ]]; then
+    cp -f "$hypr_login_src_dir/install.conf" "$hypr_login_dest_dir/install.conf"
+  fi
 
   log "Configuring getty autologin on tty1..."
   sudo mkdir -p /etc/systemd/system/getty@tty1.service.d
@@ -338,10 +395,7 @@ EOF
   sudo systemctl disable sddm.service || true
   sudo systemctl disable greetd.service || true
 
-  log "Setting user face permissions for hyprlock..."
-  sudo setfacl -m u:sddm:x "$HOME" 2>/dev/null || true
-  sudo setfacl -m u:sddm:r "$HOME/.face.icon" 2>/dev/null || true
-  sudo setfacl -m u:sddm:r "$HOME/.face" 2>/dev/null || true
+  configure_niri_hyprlock_startup
 }
 
 print_summary() {
@@ -352,16 +406,17 @@ Setup complete.
 Installed:
   - Visual Studio Code (Microsoft build) and Antigravity IDE
   - Docker Engine, Buildx, and Compose
+  - Ghostty terminal
   - Redis and redis-cli
   - PostgreSQL and pgAdmin 4 Desktop
-  - GitHub CLI and Microsoft Edit
+  - GitHub CLI, hyprlock, and Microsoft Edit
   - Python, uv, Node.js through NVM, pnpm, and Bun, with Node.js available in Fish
   - Brave Browser and LocalSend
 
 Configured:
   - User configuration dotfiles deployed and path references adjusted
   - Conflicting display managers removed (if present)
-  - hypr-login setup completed (TTY autologin active on tty1)
+  - hypr-login style Niri setup completed (TTY autologin active on tty1)
 
 Log out and back in before using Docker without sudo.
 Authenticate GitHub CLI with: gh auth login

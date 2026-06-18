@@ -1,0 +1,4 @@
+{
+    "security.workspace.trust.untrustedFiles": "open",
+    "github.copilot.nextEditSuggestions.enabled": true
+}
