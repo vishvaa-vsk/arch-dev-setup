@@ -174,7 +174,8 @@ configure_postgresql() {
   log "Initializing and enabling PostgreSQL"
   
   local needs_init=false
-  if [[ ! -d "$POSTGRES_DATA_DIR" ]] || [[ -z "$(sudo ls -A "$POSTGRES_DATA_DIR" 2>/dev/null)" ]]; then
+  # Run the directory check inside sudo sh so subshell expansion of 'ls -A' runs as root with full permissions
+  if sudo sh -c "[ ! -d '$POSTGRES_DATA_DIR' ] || [ -z \"\$(ls -A '$POSTGRES_DATA_DIR')\" ]"; then
     needs_init=true
   fi
 
