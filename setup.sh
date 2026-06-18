@@ -128,6 +128,11 @@ install_aur_helper() {
 
 install_aur_git_package() {
   local package_name="$1"
+  if pacman -Q "$package_name" >/dev/null 2>&1; then
+    log "Package ${package_name} is already installed. Skipping build."
+    return
+  fi
+
   local build_dir
   build_dir="$(mktemp -d)"
 
